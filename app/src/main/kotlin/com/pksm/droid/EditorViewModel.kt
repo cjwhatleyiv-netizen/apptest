@@ -96,6 +96,13 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun readBytes(uri: Uri): ByteArray? = try {
+        resolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Cannot read file")
+    } catch (e: Exception) {
+        status = "Read failed: ${e.message}"
+        null
+    }
+
     fun readPk4(uri: Uri): PK4? = try {
         val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Cannot read file")
         PK4.fromFile(bytes)

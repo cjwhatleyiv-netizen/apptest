@@ -332,3 +332,78 @@ fun DexScreen(vm: EditorViewModel, save: Gen4Save) {
         }
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// Mystery Gift
+// ---------------------------------------------------------------------------------------------
+
+@Composable
+fun GiftsScreen(vm: EditorViewModel, save: Gen4Save, onImport: () -> Unit) {
+    var confirmClear by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(
+            "Queue a gift, save, load the game, then talk to the Mystery Gift delivery man in a Pokémon Center.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Row(
+            Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Button(onClick = onImport) { Text("Import .pcd / .pgt") }
+            OutlinedButton(onClick = { vm.edit { vm.status = it.deliverAzureFlute() } }) { Text("Azure Flute card") }
+        }
+        Text(
+            "The Azure Flute is also a plain Key Item (Bag > Key Items), which needs no card. " +
+                "To reach Arceus you also need the National Pokédex (Trainer tab).",
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        LabeledRow {
+            Text("Delivery man active", Modifier.weight(1f))
+            Switch(checked = save.deliveryManActive, onCheckedChange = { c -> vm.edit { it.deliveryManActive = c } })
+        }
+
+        SectionTitle("Wonder Cards (3 slots)")
+        save.wonderCards().forEachIndexed { i, g ->
+            GiftRow("Card ${i + 1}", g) { vm.edit { it.clearWonderCard(i) } }
+        }
+        SectionTitle("Delivery queue (8 slots)")
+        save.giftQueue().forEachIndexed { i, g ->
+            GiftRow("Gift ${i + 1}", g) { vm.edit { it.clearGift(i) } }
+        }
+        OutlinedButton(onClick = { confirmClear = true }, modifier = Modifier.padding(top = 12.dp)) {
+            Text("Reset \"already received\" flags")
+        }
+    }
+    if (confirmClear) {
+        ConfirmDialog(
+            title = "Reset received flags?",
+            text = "Lets every card be delivered again, including ones you already received.",
+            confirmLabel = "Reset",
+            onConfirm = { confirmClear = false; vm.edit { it.clearReceivedFlags() } },
+            onDismiss = { confirmClear = false },
+        )
+    }
+}
+
+@Composable
+private fun GiftRow(label: String, g: Gen4Save.GiftSummary?, onClear: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            if (g == null) {
+                Text("$label: empty", style = MaterialTheme.typography.bodyMedium)
+            } else {
+                Text(
+                    "$label: ${g.kind}" + if (g.detail.isNotEmpty()) " – ${g.detail}" else "",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                if (g.title.isNotEmpty()) {
+                    Text("“${g.title}”  (ID ${g.cardId})", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        if (g != null) TextButton(onClick = onClear) { Text("Clear") }
+    }
+    HorizontalDivider()
+}

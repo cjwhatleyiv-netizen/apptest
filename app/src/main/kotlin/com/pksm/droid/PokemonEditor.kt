@@ -45,6 +45,9 @@ private val moveOptions: List<Pair<Int, String>> by lazy {
 private val itemOptions: List<Pair<Int, String>> by lazy {
     listOf(0 to "(none)") + Tables.heldItemChoices.map { it to Tables.itemName(it) }
 }
+private val abilityOptions: List<Pair<Int, String>> by lazy {
+    (1..Tables.MAX_ABILITY).map { it to Tables.abilityName(it) }
+}
 private val natureOptions: List<Pair<Int, String>> by lazy { Tables.natures.mapIndexed { i, n -> i to n } }
 
 /**
@@ -108,17 +111,21 @@ fun PokemonEditor(
             )
 
             val p = pk.personal
-            val abilityIds = listOf(p.ability1, p.ability2).distinct().filter { it != 0 }
-            if (abilityIds.isNotEmpty()) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
-                    abilityIds.forEach { id ->
-                        val selected = pk.ability == id
-                        val label = Tables.abilityName(id)
-                        if (selected) Button(onClick = {}) { Text(label) }
-                        else OutlinedButton(onClick = { pk.ability = id; touch() }) { Text(label) }
-                    }
+            PickerButton(
+                "Ability", Tables.abilityName(pk.ability), abilityOptions,
+                { pk.ability = it; touch() }, Modifier.fillMaxWidth(),
+            )
+            val natural = listOf(p.ability1, p.ability2).distinct().filter { it != 0 }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Natural:", Modifier.padding(top = 10.dp))
+                natural.forEach { id ->
+                    OutlinedButton(onClick = { pk.ability = id; touch() }) { Text(Tables.abilityName(id)) }
                 }
             }
+            Text(
+                "Any Gen 4 ability (ID 1-123) works on any species; the game reads this byte directly.",
+                style = MaterialTheme.typography.bodySmall,
+            )
 
             SectionTitle("Nature, gender, shininess")
             val ratio = p.genderRatio

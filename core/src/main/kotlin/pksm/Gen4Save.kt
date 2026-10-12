@@ -197,6 +197,122 @@ class Gen4Save private constructor(val raw: ByteArray, private val trailer: Byte
     fun caughtCount() = (1..Tables.MAX_SPECIES).count { isCaught(it) }
     fun seenCount() = (1..Tables.MAX_SPECIES).count { isSeen(it) }
 
+    // ---------------------------------------------------------------- mystery gift
+
+    private val mg get() = generalOff + MG
+
+    /** Mystery Gift menu unlocked + delivery man (Pokémon Center) active. */
+    var deliveryManActive: Boolean
+        get() = mgFlag(MG_DELIVERY_FLAG)
+        set(v) {
+            if (v) raw.putU8(generalOff + MG_UNLOCK, raw.u8(generalOff + MG_UNLOCK) or 1)
+            setMgFlag(MG_DELIVERY_FLAG, v)
+        }
+
+    private fun mgFlag(i: Int) = raw.u8(mg + (i shr 3)) and (1 shl (i and 7)) != 0
+    private fun setMgFlag(i: Int, v: Boolean) {
+        val o = mg + (i shr 3)
+        val m = 1 shl (i and 7)
+        raw.putU8(o, if (v) raw.u8(o) or m else raw.u8(o) and m.inv())
+    }
+
+    private fun pgtOffset(i: Int) = mg + MG_FLAGS_SIZE + i * PGT_SIZE
+    private fun pcdOffset(i: Int) = mg + MG_FLAGS_SIZE + PGT_COUNT * PGT_SIZE + i * PCD_SIZE
+
+    private fun isPgtEmpty(i: Int) = raw.u16(pgtOffset(i)) == 0
+    private fun isPcdEmpty(i: Int) = raw.u16(pcdOffset(i)) == 0
+
+    class GiftSummary(val index: Int, val isCard: Boolean, val kind: String, val title: String, val detail: String, val cardId: Int)
+
+    private fun summarize(index: Int, isCard: Boolean, off: Int): GiftSummary? {
+        val type = raw.u16(off)
+        if (type == 0) return null
+        val title = if (isCard) Gen4Text.decode(raw, off + PGT_SIZE, 0x48) else ""
+        val cardId = if (isCard) raw.u16(off + 0x150) else -1
+        val detail = when (type) {
+            1, 2 -> {
+                val inner = raw.copyOfRange(off + 8, off + 8 + Crypto.SIZE_PARTY)
+                val pk = if (inner.u32(0x64) != 0L) PK4.fromEncrypted(inner) else PK4(inner)
+                "${Tables.speciesName(pk.species)} Lv${pk.d.u8(0x84) and 0x7F}"
+            }
+            3 -> Tables.itemName(raw.i32(off + 4))
+            7 -> "Manaphy Egg"
+            else -> ""
+        }
+        return GiftSummary(index, isCard, GIFT_TYPES.getOrElse(type) { "Type $type" }, title, detail, cardId)
+    }
+
+    /** The three Wonder Card slots (null = empty). */
+    fun wonderCards(): List<GiftSummary?> = List(PCD_COUNT) { summarize(it, true, pcdOffset(it)) }
+
+    /** The eight queued gifts waiting for the delivery man (null = empty). */
+    fun giftQueue(): List<GiftSummary?> = List(PGT_COUNT) { summarize(it, false, pgtOffset(it)) }
+
+    /**
+     * Install a .pcd (856 bytes, Wonder Card + gift) or .pgt (260 bytes, gift only) so the Pokémon Center
+     * delivery man hands it over. Clears that card's "already received" flag.
+     * Returns a human-readable description of what was done.
+     */
+    fun deliverGift(file: ByteArray): String {
+        val isPcd = file.size == PCD_SIZE
+        if (!isPcd && file.size != PGT_SIZE) {
+            throw SaveFormatException("Not a .pcd (856 bytes) or .pgt (260 bytes) file: ${file.size} bytes")
+        }
+        val pgt = file.copyOfRange(0, PGT_SIZE)
+        val type = pgt.u16(0)
+        if (type == 0) throw SaveFormatException("Gift file is empty")
+        encryptGiftIfNeeded(pgt)
+
+        val pgtSlot = (0 until PGT_COUNT).firstOrNull { isPgtEmpty(it) }
+            ?: throw SaveFormatException("All 8 gift queue slots are full; clear one in the Gifts tab")
+        var pcdSlot = -1
+        if (isPcd) {
+            pcdSlot = (0 until PCD_COUNT).firstOrNull { isPcdEmpty(it) }
+                ?: throw SaveFormatException("All 3 Wonder Card slots are full; clear one in the Gifts tab")
+            val card = file.copyOf()
+            System.arraycopy(pgt, 0, card, 0, PGT_SIZE)
+            System.arraycopy(card, 0, raw, pcdOffset(pcdSlot), PCD_SIZE)
+            val id = card.u16(0x150)
+            if (id < MG_DELIVERY_FLAG) setMgFlag(id, false)
+        }
+        // DP/Pt PGT.Slot is the PCD index + 1; 4 means "no matching card".
+        pgt.putU8(2, if (pcdSlot >= 0) pcdSlot + 1 else 4)
+        System.arraycopy(pgt, 0, raw, pgtOffset(pgtSlot), PGT_SIZE)
+        deliveryManActive = true
+        return "Queued ${GIFT_TYPES.getOrElse(type) { "gift" }} (gift slot ${pgtSlot + 1}" +
+            (if (pcdSlot >= 0) ", Wonder Card slot ${pcdSlot + 1}" else "") + "). Visit the Pokémon Center Mystery Gift delivery man."
+    }
+
+    /** Built-in Azure Flute card (gift type 10). Assembled from the documented PCD layout; see README. */
+    fun deliverAzureFlute(): String = deliverGift(azureFlutePcd())
+
+    fun clearWonderCard(i: Int) {
+        require(i in 0 until PCD_COUNT)
+        java.util.Arrays.fill(raw, pcdOffset(i), pcdOffset(i) + PCD_SIZE, 0)
+        for (q in 0 until PGT_COUNT) if (raw.u8(pgtOffset(q) + 2) == i + 1 && !isPgtEmpty(q)) clearGift(q)
+    }
+
+    fun clearGift(i: Int) {
+        require(i in 0 until PGT_COUNT)
+        java.util.Arrays.fill(raw, pgtOffset(i), pgtOffset(i) + PGT_SIZE, 0)
+    }
+
+    /** Forget which cards were received, so any card can be delivered again. */
+    fun clearReceivedFlags() {
+        val keep = mgFlag(MG_DELIVERY_FLAG)
+        java.util.Arrays.fill(raw, mg, mg + MG_FLAGS_SIZE, 0)
+        setMgFlag(MG_DELIVERY_FLAG, keep)
+    }
+
+    private fun encryptGiftIfNeeded(pgt: ByteArray) {
+        val type = pgt.u16(0)
+        if (type != 1 && type != 2) return
+        val inner = pgt.copyOfRange(8, 8 + Crypto.SIZE_PARTY)
+        if (inner.all { it == 0.toByte() }) return
+        if (inner.u32(0x64) != 0L) return // already encrypted (unused ribbon bits non-zero)
+        System.arraycopy(Crypto.encrypt(inner), 0, pgt, 8, Crypto.SIZE_PARTY)
+    }
+
     // ---------------------------------------------------------------- output
 
     /** Recalculates the CRCs of the live blocks and returns the full file. */
@@ -223,6 +339,36 @@ class Gen4Save private constructor(val raw: ByteArray, private val trailer: Byte
         private const val PARTY = 0xA0
         private const val BAG = 0x630
         private const val DEX = 0x1328
+
+        private const val MG = 0xB4C0
+        private const val MG_UNLOCK = 72
+        private const val MG_FLAGS_SIZE = 0x100
+        private const val MG_DELIVERY_FLAG = 2047
+        const val PGT_SIZE = 0x104
+        const val PCD_SIZE = 0x358
+        const val PGT_COUNT = 8
+        const val PCD_COUNT = 3
+
+        private val GIFT_TYPES = listOf(
+            "Empty", "Pokémon", "Pokémon Egg", "Item", "Rule", "Goods", "Seal/Accessory/Backdrop", "Manaphy Egg",
+            "Member Card", "Oak's Letter", "Azure Flute", "Pokétch App", "Secret Key", "Pokémon Movie",
+            "Pokéwalker Course", "Memorial Photo",
+        )
+
+        /** Item 455 (Azure Flute) can also just be added in Bag > Key Items; this card is the "Mystery Gift" route. */
+        fun azureFlutePcd(): ByteArray {
+            val b = ByteArray(PCD_SIZE)
+            b.putU16(0, 10) // gift type: Azure Flute
+            b.putU8(2, 4) // no matching card (overwritten on delivery)
+            // Title field is 0x48 bytes, 0xFF-padded, 0xFFFF-terminated.
+            java.util.Arrays.fill(b, PGT_SIZE, PGT_SIZE + 0x48, 0xFF.toByte())
+            val tmp = ByteArray(0x48)
+            val title = "AZURE FLUTE"
+            Gen4Text.encode(title, tmp, 0, 0x48, title.length)
+            System.arraycopy(tmp, 0, b, PGT_SIZE, title.length * 2)
+            b.putU16(0x150, 1999) // card id (= received-flag index); unused by any retail Pt card
+            return b
+        }
 
         const val BOX_COUNT = 18
         const val BOX_SLOTS = 30

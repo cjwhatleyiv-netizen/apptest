@@ -155,4 +155,37 @@ class CoreTest {
         assertEquals(25, back.u16(8))
         assertEquals("RED", PK4(back).otName)
     }
+
+    @Test fun mysteryGiftAzureFlute() {
+        val sav = Gen4Save.load(syntheticSave())
+        assertTrue(sav.wonderCards().all { it == null })
+        sav.deliverAzureFlute()
+        val card = sav.wonderCards()[0]!!
+        assertEquals("Azure Flute", card.kind)
+        assertEquals("AZURE FLUTE", card.title)
+        assertEquals(1999, card.cardId)
+        assertEquals("Azure Flute", sav.giftQueue()[0]!!.kind)
+        assertTrue(sav.deliveryManActive)
+        val out = Gen4Save.load(sav.export())
+        assertEquals("AZURE FLUTE", out.wonderCards()[0]!!.title)
+        out.clearWonderCard(0)
+        assertTrue(out.wonderCards().all { it == null })
+        assertTrue(out.giftQueue().all { it == null }) // linked queue entry removed with its card
+    }
+
+    @Test fun mysteryGiftPokemonEncryptedAndSlotsFull() {
+        val sav = Gen4Save.load(syntheticSave())
+        val pk = PK4.fromFile(fixture("leafeon.pk4"))
+        val pcd = ByteArray(Gen4Save.PCD_SIZE)
+        pcd.putU16(0, 1)
+        System.arraycopy(pk.d, 0, pcd, 8, 236) // decrypted gift
+        pcd.putU16(0x150, 7)
+        sav.deliverGift(pcd)
+        val g = sav.wonderCards()[0]!!
+        assertTrue(g.detail.startsWith("Leafeon"), g.detail)
+        repeat(2) { sav.deliverGift(pcd) }
+        assertFailsWith<SaveFormatException> { sav.deliverGift(pcd) } // only 3 card slots
+        assertFailsWith<SaveFormatException> { sav.deliverGift(ByteArray(10)) }
+        sav.deliverGift(pcd.copyOf(Gen4Save.PGT_SIZE)) // bare .pgt still queues (5 free queue slots left)
+    }
 }

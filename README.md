@@ -9,6 +9,8 @@ melonDS (Android) writes for the game. Built for the AYN Thor, works on any Andr
 - Bag: all 8 pouches
 - Trainer: name, TID/SID, money, coins, BP, badges, play time
 - Pokédex: seen / caught, complete / clear
+- Mystery Gift: import `.pcd` / `.pgt` files into the Wonder Card slots and delivery queue, plus a built-in Azure Flute card
+- Any Gen 4 ability (ID 1-123) on any Pokémon, and free nature / gender / shininess (the PID is re-rolled to match)
 
 ## Using it
 1. **Close the game in melonDS first.** melonDS rewrites the save on exit and would overwrite your edits.
@@ -29,6 +31,12 @@ To build locally you need JDK 17 and the Android SDK (API 35): `./gradlew :app:a
 - `core/` – pure Kotlin library: Gen 4 crypto, PK4 format, Platinum save blocks, checksums, name tables. No Android deps.
   `./gradlew :core:test -PcoreOnly` runs its tests without the Android SDK.
 - `app/` – Jetpack Compose UI (Storage Access Framework for file access, so no storage permissions are needed).
+
+## Mystery Gift notes
+Queued gifts are handed out by the Mystery Gift delivery man in a Pokémon Center after you reload the save.
+The `.pcd`/`.pgt` layout and slot offsets are from PKHeX. The built-in Azure Flute card is assembled from that
+documented layout (gift type 10); no retail Platinum Azure Flute card file was available to compare against, so it
+has not been verified in the game. The Azure Flute (item 455) can always be added directly in Bag > Key Items.
 
 ## Scope / limits
 - Platinum only (international header). Diamond/Pearl/HeartGold/SoulSilver and Japanese/Korean saves are rejected.

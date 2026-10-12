@@ -37,7 +37,7 @@ import androidx.compose.ui.unit.dp
 import pksm.Gen4Save
 import pksm.PK4
 
-private enum class Tab(val title: String) { PARTY("Party"), BOXES("Boxes"), BAG("Bag"), TRAINER("Trainer"), DEX("Pokédex") }
+private enum class Tab(val title: String) { PARTY("Party"), BOXES("Boxes"), BAG("Bag"), TRAINER("Trainer"), DEX("Pokédex"), GIFTS("Gifts") }
 
 /** What the open editor will write back to. */
 private sealed interface Slot {
@@ -84,6 +84,11 @@ private fun AppContent(vm: EditorViewModel) {
         importTarget = null
         if (uri != null && target != null) {
             vm.readPk4(uri)?.let { pk -> session = EditSession(target, pk, isNew = true) }
+        }
+    }
+    val openGift = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri != null) {
+            vm.readBytes(uri)?.let { bytes -> vm.edit { s -> vm.status = s.deliverGift(bytes) } }
         }
     }
     val savePk4 = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri: Uri? ->
@@ -222,6 +227,7 @@ private fun AppContent(vm: EditorViewModel) {
                 Tab.BAG -> BagScreen(vm, save)
                 Tab.TRAINER -> TrainerScreen(vm, save)
                 Tab.DEX -> DexScreen(vm, save)
+                Tab.GIFTS -> GiftsScreen(vm, save, onImport = { openGift.launch(arrayOf("*/*")) })
             }
         }
     }
