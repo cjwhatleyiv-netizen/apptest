@@ -351,10 +351,18 @@ fun GiftsScreen(vm: EditorViewModel, save: Gen4Save, onImport: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Button(onClick = onImport) { Text("Import .pcd / .pgt") }
-            OutlinedButton(onClick = { vm.edit { vm.status = it.deliverAzureFlute() } }) { Text("Azure Flute card") }
+        }
+        SectionTitle("Event item cards")
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Gen4Save.Companion.EventCard.entries.forEach { card ->
+                OutlinedButton(onClick = { vm.edit { vm.status = it.deliverEventCard(card) } }) { Text(card.label) }
+            }
         }
         Text(
-            "The Azure Flute is also a plain Key Item (Bag > Key Items), which needs no card. " +
+            "Each of these is also a plain Key Item (Bag > Key Items), which needs no card. " +
                 "To reach Arceus you also need the National Pokédex (Trainer tab).",
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.padding(top = 4.dp),

@@ -9,7 +9,7 @@ melonDS (Android) writes for the game. Built for the AYN Thor, works on any Andr
 - Bag: all 8 pouches
 - Trainer: name, TID/SID, money, coins, BP, badges, play time
 - Pokédex: seen / caught, complete / clear
-- Mystery Gift: import `.pcd` / `.pgt` files into the Wonder Card slots and delivery queue, plus a built-in Azure Flute card
+- Mystery Gift: import `.pcd` / `.pgt` files into the Wonder Card slots and delivery queue, plus built-in event item cards (Azure Flute, Member Card, Oak's Letter, Secret Key)
 - Any Gen 4 ability (ID 1-123) on any Pokémon, and free nature / gender / shininess (the PID is re-rolled to match)
 
 ## Using it
@@ -18,8 +18,16 @@ melonDS (Android) writes for the game. Built for the AYN Thor, works on any Andr
 3. Edit, tap **Save**. The app writes the file back and reads it back to verify.
 4. Launch the game in melonDS.
 
-A copy of the original file is stored in the app's private storage every time you open a save (last 5 kept),
-and **Save copy** writes the edited save anywhere you choose. Keep your own backup too.
+## Backups
+- **Backup** button (top bar): choose a backup folder once. From then on every **Save** first writes a timestamped
+  `platinum-backup-YYYYMMDD-HHMMSS.sav` of the file as it currently is on disk into that folder, verifies it, and
+  cancels the save if the backup fails.
+- Before writing, the app re-parses the new save and refuses to write it if it would not load again. After writing it
+  reads the file back and compares it byte for byte.
+- **Back up current file now** and **Restore from backup file…** are in the same dialog. Restoring validates the
+  backup as a Platinum save and backs up the current file first.
+- A copy of the original is also kept in app-private storage each time you open a save (last 5).
+- **Save copy** writes the edited save anywhere you choose.
 
 ## Getting the APK
 Every push runs the GitHub Actions workflow `Build APK`. Download the `pksm-droid-debug-apk` artifact from the run,
@@ -34,9 +42,9 @@ To build locally you need JDK 17 and the Android SDK (API 35): `./gradlew :app:a
 
 ## Mystery Gift notes
 Queued gifts are handed out by the Mystery Gift delivery man in a Pokémon Center after you reload the save.
-The `.pcd`/`.pgt` layout and slot offsets are from PKHeX. The built-in Azure Flute card is assembled from that
-documented layout (gift type 10); no retail Platinum Azure Flute card file was available to compare against, so it
-has not been verified in the game. The Azure Flute (item 455) can always be added directly in Bag > Key Items.
+The `.pcd`/`.pgt` layout and slot offsets are from PKHeX. The built-in cards (gift types 10, 8, 9, 12) are assembled from that
+documented layout (gift type 10); no retail Platinum card files were available to compare against, so it
+has not been verified in the game. The same items (Azure Flute 455, Member Card 454, Oak's Letter 452, Secret Key 467) can always be added directly in Bag > Key Items.
 
 ## Scope / limits
 - Platinum only (international header). Diamond/Pearl/HeartGold/SoulSilver and Japanese/Korean saves are rejected.

@@ -283,8 +283,8 @@ class Gen4Save private constructor(val raw: ByteArray, private val trailer: Byte
             (if (pcdSlot >= 0) ", Wonder Card slot ${pcdSlot + 1}" else "") + "). Visit the Pokémon Center Mystery Gift delivery man."
     }
 
-    /** Built-in Azure Flute card (gift type 10). Assembled from the documented PCD layout; see README. */
-    fun deliverAzureFlute(): String = deliverGift(azureFlutePcd())
+    /** Built-in event item cards. Assembled from the documented PCD layout; see README. */
+    fun deliverEventCard(card: EventCard): String = deliverGift(eventCardPcd(card))
 
     fun clearWonderCard(i: Int) {
         require(i in 0 until PCD_COUNT)
@@ -355,18 +355,27 @@ class Gen4Save private constructor(val raw: ByteArray, private val trailer: Byte
             "Pokéwalker Course", "Memorial Photo",
         )
 
-        /** Item 455 (Azure Flute) can also just be added in Bag > Key Items; this card is the "Mystery Gift" route. */
-        fun azureFlutePcd(): ByteArray {
+        /**
+         * Key-item event cards. Each also exists as a plain item (Bag > Key Items) with [itemId], which needs no card.
+         * Card IDs are received-flag indices; 1996-1999 are not used by any retail Platinum card.
+         */
+        enum class EventCard(val label: String, val giftType: Int, val title: String, val cardId: Int, val itemId: Int) {
+            AZURE_FLUTE("Azure Flute", 10, "AZURE FLUTE", 1999, 455),
+            MEMBER_CARD("Member Card", 8, "MEMBER CARD", 1998, 454),
+            OAKS_LETTER("Oak's Letter", 9, "OAK'S LETTER", 1997, 452),
+            SECRET_KEY("Secret Key", 12, "SECRET KEY", 1996, 467),
+        }
+
+        fun eventCardPcd(card: EventCard): ByteArray {
             val b = ByteArray(PCD_SIZE)
-            b.putU16(0, 10) // gift type: Azure Flute
+            b.putU16(0, card.giftType)
             b.putU8(2, 4) // no matching card (overwritten on delivery)
             // Title field is 0x48 bytes, 0xFF-padded, 0xFFFF-terminated.
             java.util.Arrays.fill(b, PGT_SIZE, PGT_SIZE + 0x48, 0xFF.toByte())
             val tmp = ByteArray(0x48)
-            val title = "AZURE FLUTE"
-            Gen4Text.encode(title, tmp, 0, 0x48, title.length)
-            System.arraycopy(tmp, 0, b, PGT_SIZE, title.length * 2)
-            b.putU16(0x150, 1999) // card id (= received-flag index); unused by any retail Pt card
+            Gen4Text.encode(card.title, tmp, 0, 0x48, card.title.length)
+            System.arraycopy(tmp, 0, b, PGT_SIZE, card.title.length * 2)
+            b.putU16(0x150, card.cardId)
             return b
         }
 

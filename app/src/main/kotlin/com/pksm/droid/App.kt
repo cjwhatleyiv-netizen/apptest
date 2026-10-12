@@ -65,6 +65,8 @@ private fun AppContent(vm: EditorViewModel) {
     var session by remember { mutableStateOf<EditSession?>(null) }
     var importTarget by remember { mutableStateOf<Slot?>(null) }
     var exportPk by remember { mutableStateOf<PK4?>(null) }
+    var showBackup by remember { mutableStateOf(false) }
+    var confirmRestore by remember { mutableStateOf<Uri?>(null) }
 
     LaunchedEffect(vm.status) {
         vm.status?.let {
@@ -90,6 +92,12 @@ private fun AppContent(vm: EditorViewModel) {
         if (uri != null) {
             vm.readBytes(uri)?.let { bytes -> vm.edit { s -> vm.status = s.deliverGift(bytes) } }
         }
+    }
+    val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
+        if (uri != null) vm.setBackupFolder(uri)
+    }
+    val pickBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri != null) confirmRestore = uri
     }
     val savePk4 = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri: Uri? ->
         val pk = exportPk
@@ -148,6 +156,43 @@ private fun AppContent(vm: EditorViewModel) {
         )
     }
 
+    if (showBackup) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showBackup = false },
+            title = { Text("Backups") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Backup folder: " + (vm.backupFolder?.lastPathSegment ?: "not set"),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        "Once a folder is set, every Save first writes a timestamped copy of the existing file there " +
+                            "and cancels the save if that copy fails.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { pickFolder.launch(null) }) { Text(if (vm.backupFolder == null) "Choose folder" else "Change") }
+                        if (vm.backupFolder != null) OutlinedButton(onClick = { vm.setBackupFolder(null) }) { Text("Clear") }
+                    }
+                    OutlinedButton(onClick = { vm.backupNow() }, enabled = vm.backupFolder != null) { Text("Back up current file now") }
+                    OutlinedButton(onClick = { pickBackup.launch(arrayOf("*/*")) }) { Text("Restore from backup file…") }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showBackup = false }) { Text("Close") } },
+        )
+    }
+    confirmRestore?.let { uri ->
+        ConfirmDialog(
+            title = "Restore this backup?",
+            text = "The open save file will be overwritten with the chosen backup (the current file is backed up first). " +
+                "Unsaved edits in the app are discarded.",
+            confirmLabel = "Restore",
+            onConfirm = { confirmRestore = null; showBackup = false; vm.restore(uri) },
+            onDismiss = { confirmRestore = null },
+        )
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
@@ -164,6 +209,7 @@ private fun AppContent(vm: EditorViewModel) {
                             style = MaterialTheme.typography.labelSmall,
                         )
                     }
+                    TextButton(onClick = { showBackup = true }) { Text("Backup") }
                     TextButton(onClick = { saveCopy.launch("platinum-edited.sav") }) { Text("Save copy") }
                     Button(onClick = { vm.writeBack() }, enabled = vm.dirty) { Text("Save") }
                 }

@@ -156,21 +156,29 @@ class CoreTest {
         assertEquals("RED", PK4(back).otName)
     }
 
-    @Test fun mysteryGiftAzureFlute() {
+    @Test fun mysteryGiftEventCards() {
         val sav = Gen4Save.load(syntheticSave())
         assertTrue(sav.wonderCards().all { it == null })
-        sav.deliverAzureFlute()
+        sav.deliverEventCard(Gen4Save.Companion.EventCard.AZURE_FLUTE)
         val card = sav.wonderCards()[0]!!
         assertEquals("Azure Flute", card.kind)
         assertEquals("AZURE FLUTE", card.title)
         assertEquals(1999, card.cardId)
         assertEquals("Azure Flute", sav.giftQueue()[0]!!.kind)
         assertTrue(sav.deliveryManActive)
+        sav.deliverEventCard(Gen4Save.Companion.EventCard.MEMBER_CARD)
+        sav.deliverEventCard(Gen4Save.Companion.EventCard.OAKS_LETTER)
+        val kinds = sav.wonderCards().map { it!!.kind to it.title }
+        assertEquals(listOf("Azure Flute" to "AZURE FLUTE", "Member Card" to "MEMBER CARD", "Oak's Letter" to "OAK'S LETTER"), kinds)
         val out = Gen4Save.load(sav.export())
-        assertEquals("AZURE FLUTE", out.wonderCards()[0]!!.title)
+        assertEquals("OAK'S LETTER", out.wonderCards()[2]!!.title)
         out.clearWonderCard(0)
-        assertTrue(out.wonderCards().all { it == null })
-        assertTrue(out.giftQueue().all { it == null }) // linked queue entry removed with its card
+        assertEquals(null, out.wonderCards()[0])
+        assertEquals(null, out.giftQueue()[0]) // linked queue entry removed with its card
+        assertEquals("Member Card", out.giftQueue()[1]!!.kind)
+        // Secret Key reuses the freed slot
+        out.deliverEventCard(Gen4Save.Companion.EventCard.SECRET_KEY)
+        assertEquals("Secret Key", out.wonderCards()[0]!!.kind)
     }
 
     @Test fun mysteryGiftPokemonEncryptedAndSlotsFull() {

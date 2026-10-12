@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -12,6 +13,9 @@ import androidx.lifecycle.AndroidViewModel
 import pksm.Gen4Save
 import pksm.PK4
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class EditorViewModel(app: Application) : AndroidViewModel(app) {
     var save by mutableStateOf<Gen4Save?>(null)
@@ -28,7 +32,18 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     /** One-shot message shown in a snackbar. */
     var status by mutableStateOf<String?>(null)
 
+    /** User-chosen folder that receives a timestamped copy of the file before every save. */
+    var backupFolder by mutableStateOf<Uri?>(null)
+        private set
+
+    /** Exact bytes currently on disk (as loaded, or as last written by us). */
+    private var diskBytes: ByteArray? = null
+
     private val prefs = app.getSharedPreferences("pksm", Context.MODE_PRIVATE)
+
+    init {
+        backupFolder = prefs.getString("backup_folder", null)?.let(Uri::parse)
+    }
     private val resolver get() = getApplication<Application>().contentResolver
 
     val lastUri: Uri? get() = prefs.getString("last_uri", null)?.let(Uri::parse)
@@ -38,6 +53,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Cannot read file")
             val s = Gen4Save.load(bytes)
             backup(bytes)
+            diskBytes = bytes
             save = s
             saveUri = uri
             dirty = false
@@ -69,21 +85,100 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Write the edited save back over the file it was opened from, then verify by reading it back. */
+    /**
+     * Write the edited save back over the file it was opened from.
+     * Order: validate the new bytes -> back up what is on disk now -> write -> read back and compare.
+     * Any failure before the write leaves the original file untouched.
+     */
     fun writeBack() {
         val s = save ?: return
         val uri = saveUri ?: return
+        val before = diskBytes ?: return
         try {
             val out = s.export()
+            Gen4Save.load(out) // refuse to write anything that would not load again
+            val where = backupExternal(before)
+            backup(before)
             resolver.openOutputStream(uri, "wt")?.use { it.write(out) } ?: error("Cannot open file for writing")
             val check = resolver.openInputStream(uri)?.use { it.readBytes() }
-            if (check == null || !check.contentEquals(out)) error("Verification failed: file on disk differs from what was written")
+            if (check == null || !check.contentEquals(out)) {
+                error("Verification failed: file on disk differs from what was written. Restore from your backup.")
+            }
+            diskBytes = out
             dirty = false
             revision++
-            status = "Saved. Reload the game in melonDS."
+            status = "Saved." + (where?.let { " Backup: $it." } ?: " (No backup folder set; app-private backup only.)")
         } catch (e: Exception) {
             status = "Save failed: ${e.message}"
         }
+    }
+
+    // ------------------------------------------------------------------ backups
+
+    fun setBackupFolder(uri: Uri?) {
+        if (uri != null) {
+            try {
+                resolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            } catch (e: Exception) {
+                status = "Cannot keep access to that folder: ${e.message}"
+                return
+            }
+        }
+        backupFolder = uri
+        prefs.edit().putString("backup_folder", uri?.toString()).apply()
+        status = if (uri == null) "Backup folder cleared" else "Backup folder set"
+    }
+
+    /** Copy the file as it is on disk right now into the backup folder. */
+    fun backupNow() {
+        val bytes = diskBytes ?: return
+        try {
+            val where = backupExternal(bytes) ?: error("Choose a backup folder first")
+            status = "Backed up: $where"
+        } catch (e: Exception) {
+            status = "Backup failed: ${e.message}"
+        }
+    }
+
+    /**
+     * Replace the open save file with a backup. The current on-disk file is backed up first,
+     * and the chosen file must load as a valid Platinum save.
+     */
+    fun restore(uri: Uri) {
+        val target = saveUri ?: return
+        val before = diskBytes ?: return
+        try {
+            val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Cannot read backup file")
+            val restored = Gen4Save.load(bytes)
+            backupExternal(before)
+            backup(before)
+            resolver.openOutputStream(target, "wt")?.use { it.write(bytes) } ?: error("Cannot open file for writing")
+            val check = resolver.openInputStream(target)?.use { it.readBytes() }
+            if (check == null || !check.contentEquals(bytes)) error("Verification failed after restore")
+            diskBytes = bytes
+            save = restored
+            dirty = false
+            revision++
+            status = "Restored ${restored.trainerName.ifEmpty { "save" }} from backup"
+        } catch (e: Exception) {
+            status = "Restore failed: ${e.message}"
+        }
+    }
+
+    /** Writes [bytes] into the backup folder (if set) and verifies it. Returns the file name, or null if no folder is set. */
+    private fun backupExternal(bytes: ByteArray): String? {
+        val folder = backupFolder ?: return null
+        val name = "platinum-backup-" + SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date()) + ".sav"
+        val parent = DocumentsContract.buildDocumentUriUsingTree(folder, DocumentsContract.getTreeDocumentId(folder))
+        val doc = DocumentsContract.createDocument(resolver, parent, "application/octet-stream", name)
+            ?: error("Backup folder is not writable (choose it again)")
+        resolver.openOutputStream(doc, "wt")?.use { it.write(bytes) } ?: error("Cannot write backup file")
+        val check = resolver.openInputStream(doc)?.use { it.readBytes() }
+        if (check == null || !check.contentEquals(bytes)) error("Backup verification failed")
+        return name
     }
 
     fun writeCopy(uri: Uri) {
