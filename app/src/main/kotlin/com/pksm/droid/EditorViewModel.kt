@@ -115,7 +115,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     // ------------------------------------------------------------------ backups
 
-    fun setBackupFolder(uri: Uri?) {
+    fun chooseBackupFolder(uri: Uri?) {
         if (uri != null) {
             try {
                 resolver.takePersistableUriPermission(

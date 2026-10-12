@@ -94,7 +94,7 @@ private fun AppContent(vm: EditorViewModel) {
         }
     }
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
-        if (uri != null) vm.setBackupFolder(uri)
+        if (uri != null) vm.chooseBackupFolder(uri)
     }
     val pickBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) confirmRestore = uri
@@ -173,7 +173,7 @@ private fun AppContent(vm: EditorViewModel) {
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { pickFolder.launch(null) }) { Text(if (vm.backupFolder == null) "Choose folder" else "Change") }
-                        if (vm.backupFolder != null) OutlinedButton(onClick = { vm.setBackupFolder(null) }) { Text("Clear") }
+                        if (vm.backupFolder != null) OutlinedButton(onClick = { vm.chooseBackupFolder(null) }) { Text("Clear") }
                     }
                     OutlinedButton(onClick = { vm.backupNow() }, enabled = vm.backupFolder != null) { Text("Back up current file now") }
                     OutlinedButton(onClick = { pickBackup.launch(arrayOf("*/*")) }) { Text("Restore from backup file…") }
