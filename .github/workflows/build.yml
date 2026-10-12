@@ -2,7 +2,11 @@ name: Build APK
 
 on:
   push:
+    branches: ['**'] # branches only: the release tag below must not re-trigger this workflow
   workflow_dispatch:
+
+permissions:
+  contents: write # needed to publish the release
 
 jobs:
   build:
@@ -23,11 +27,26 @@ jobs:
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug --no-daemon --console=plain
 
+      - name: Name the APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk pksm-droid.apk
+
       - uses: actions/upload-artifact@v4
         with:
           name: pksm-droid-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: pksm-droid.apk
           if-no-files-found: error
+
+      # Always-current download: Releases > "latest" (replaced on every successful build).
+      - name: Publish release "latest"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --cleanup-tag --yes || true
+          gh release create latest pksm-droid.apk \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "PKSM Droid (latest build)" \
+            --notes "Built from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. Download pksm-droid.apk and sideload it."
 
       - uses: actions/upload-artifact@v4
         if: failure()

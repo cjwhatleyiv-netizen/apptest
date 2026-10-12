@@ -30,8 +30,13 @@ melonDS (Android) writes for the game. Built for the AYN Thor, works on any Andr
 - **Save copy** writes the edited save anywhere you choose.
 
 ## Getting the APK
-Every push runs the GitHub Actions workflow `Build APK`. Download the `pksm-droid-debug-apk` artifact from the run,
-unzip it, and sideload `app-debug.apk`.
+Download the latest build directly (no zip, no artifacts page):
+
+**https://github.com/cjwhatleyiv-netizen/apptest/releases/download/latest/pksm-droid.apk**
+
+or open the repo's **Releases** page and take `pksm-droid.apk` from the "PKSM Droid (latest build)" release.
+Every successful push builds and replaces it. Sideload it on the device (allow installs from your browser/file manager
+when Android asks). The same file is also attached to each workflow run as an artifact.
 
 To build locally you need JDK 17 and the Android SDK (API 35): `./gradlew :app:assembleDebug`.
 
